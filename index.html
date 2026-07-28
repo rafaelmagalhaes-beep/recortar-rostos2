@@ -12,28 +12,33 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        cp: {
-                            blue: '#0099FF',      /* Pantone 2995 C */
-                            purple: '#4E008E',    /* Medium Purple C */
-                            darkBlue: '#2c5697',  /* Fundo principal dos containers */
-                            cardBg: '#1e3d6f',    /* Fundo dos campos de entrada e inner cards */
-                            cyan: '#2CD5C4',
-                            yellow: '#FEDD00',    /* Amarelo CP */
-                            lime: '#CEDC00'
-                        }
-                    },
-                    fontFamily: {
-                        montserrat: ['Montserrat', 'sans-serif'],
-                        lato: ['Lato', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+        theme: {
+            extend: {
+                colors: {
+                    cp: {
+                        blue: '#0099FF',      /* Pantone 2995 C */
+                        purple: '#4E008E',    /* Medium Purple C */
+                        darkBlue: '#2c5697',  /* Fundo principal dos containers */
+                        cardBg: '#1e3d6f',    /* Fundo dos campos de entrada e inner cards */
+                        cyan: '#2CD5C4',
+                        yellow: '#FEDD00',    /* Amarelo CP */
+                        lime: '#CEDC00'
                     }
+                },
+                fontFamily: {
+                    montserrat: ['Montserrat', 'sans-serif'],
+                    lato: ['Lato', 'sans-serif'],
+                    mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                },
+                dropShadow: {
+                    'neon-blue': '0 0 5px #0099FF, 0 0 10px #0099FF, 0 0 20px #0099FF',
+                    'neon-yellow': '0 0 5px #FEDD00, 0 0 10px #FEDD00, 0 0 20px #FEDD00',
+                    'neon-cyan': '0 0 5px #2CD5C4, 0 0 10px #2CD5C4, 0 0 20px #2CD5C4'
                 }
             }
         }
-    </script>
+    }
+</script>
     <!-- SheetJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <!-- JSZip -->
@@ -96,7 +101,7 @@
             </div>
 
             <h1 class="text-3xl md:text-5xl font-black text-white tracking-tight drop-shadow-md">
-                Recorte de Fotos dos <span neon="text-cp-yellow">Palestrantes.</span>
+                Recorte de Fotos dos <span class="text-white drop-shadow-neon-yellow font-bold">Palestrantes.</span>
             </h1>
             <p class="mt-2 text-white max-w-lg text-sm md:text-base font-semibold drop-shadow">
                 Identificação facial automática para preparar o lineup do evento em segundos.
