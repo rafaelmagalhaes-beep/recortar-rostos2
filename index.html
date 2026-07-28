@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processador de Fotos de Palestrantes</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- face-api.js -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .file-input-label { cursor: pointer; transition: all 0.2s ease-in-out; }
+        .file-input-label:hover { opacity: 0.9; }
+        .loader { border-top-color: #3498db; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+    <div class="container mx-auto p-4 md:p-8 max-w-5xl">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Ferramenta de Corte de Fotos de Palestrantes</h1>
+            <p class="mt-2 text-gray-600">Envie sua planilha, baixe, corte e renomeie as fotos automaticamente.</p>
+        </header>
+
+        <main id="app">
+            <!-- Instruções -->
+            <div id="instructions" class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg mb-6">
+                <h3 class="text-lg font-semibold">Como usar:</h3>
+                <ol class="list-decimal list-inside mt-2 space-y-1">
+                    <li>Sua planilha precisa ter as colunas: <strong>Nome do Palestrante</strong> e <strong>Link da Foto no Google Drive</strong>.</li>
+                    <li><strong>Importante:</strong> Certifique-se de que o acesso às fotos no Drive esteja como <em>"Qualquer pessoa com o link"</em>.</li>
+                </ol>
+            </div>
+
+            <!-- Area de Upload -->
+            <div id="upload-section" class="bg-white p-6 rounded-lg shadow-md mb-6">
+                 <div class="flex flex-col md:flex-row gap-4">
+                    <div class="w-full md:w-1/2 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center" id="drop-zone">
+                        <input type="file" id="file-input" class="hidden" accept=".xlsx, .csv">
+                        <label for="file-input" class="file-input-label flex flex-col items-center justify-center">
+                            <span class="text-sm font-medium text-gray-600">Arraste a planilha aqui</span>
+                            <span class="text-xs text-gray-500">ou</span>
+                            <span class="text-sm font-bold text-blue-600">Clique para selecionar</span>
+                        </label>
+                        <p id="file-name" class="mt-2 text-sm text-gray-500"></p>
+                    </div>
+                    <div class="w-full md:w-1/2">
+                        <textarea id="paste-data" class="w-full h-full p-3 border border-gray-300 rounded-lg" rows="6" placeholder="Ou cole aqui (ex: Nome, Link)"></textarea>
+                    </div>
+                </div>
+                <div class="mt-6 text-center">
+                    <button id="process-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg shadow-md hover:bg-blue-700 disabled:bg-gray-400">
+                        Processar Imagens
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status -->
+            <div id="status-section" class="hidden text-center bg-white p-6 rounded-lg shadow-md mb-6">
+                <div class="flex items-center justify-center">
+                    <div class="loader h-8 w-8 rounded-full border-4 border-gray-200"></div>
+                    <p id="status-text" class="ml-4 text-lg font-medium text-gray-700">Aguardando...</p>
+                </div>
+                 <div class="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+                    <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- Resultados -->
+            <div id="results-section" class="hidden">
+                 <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold">Resultados</h2>
+                    <button id="download-all-btn" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg shadow-md hover:bg-green-700">
+                        Baixar Todas (.zip)
+                    </button>
+                </div>
+                <div id="results-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const app = {
+            dropZone: document.getElementById('drop-zone'),
+            fileInput: document.getElementById('file-input'),
+            fileNameEl: document.getElementById('file-name'),
+            pasteDataEl: document.getElementById('paste-data'),
+            processBtn: document.getElementById('process-btn'),
+            statusSection: document.getElementById('status-section'),
+            statusText: document.getElementById('status-text'),
+            progressBar: document.getElementById('progress-bar'),
+            resultsSection: document.getElementById('results-section'),
+            resultsGrid: document.getElementById('results-grid'),
+            downloadAllBtn: document.getElementById('download-all-btn'),
+
+            isProcessing: false,
+            processedImages: [],
+
+            init() {
+                this.setupEventListeners();
+                this.loadModels();
+            },
+
+            async loadModels() {
+                this.updateStatus('Carregando modelos de IA...');
+                this.processBtn.disabled = true;
+                try {
+                    await faceapi.nets.ssdMobilenetv1.loadFromUri('https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights');
+                    this.updateStatus('Pronto para iniciar!');
+                    this.processBtn.disabled = false;
+                } catch (error) {
+                    this.updateStatus('Erro ao carregar IA. Recarregue a página.', true);
+                }
+            },
+
+            setupEventListeners() {
+                this.processBtn.addEventListener('click', () => this.startProcessing());
+                this.fileInput.addEventListener('change', () => {
+                     if (this.fileInput.files.length) {
+                        this.fileNameEl.textContent = this.fileInput.files[0].name;
+                    }
+                });
+                this.downloadAllBtn.addEventListener('click', () => this.downloadAllAsZip());
+            },
+
+            async startProcessing() {
+                if (this.isProcessing) return;
+                this.isProcessing = true;
+                this.processBtn.disabled = true;
+                this.statusSection.classList.remove('hidden');
+                this.resultsSection.classList.add('hidden');
+                this.resultsGrid.innerHTML = '';
+                this.processedImages = [];
+
+                try {
+                    const data = await this.getData();
+                    for (let i = 0; i < data.length; i++) {
+                        const row = data[i];
+                        const name = row['Nome do Palestrante'] || row[Object.keys(row)[0]];
+                        const url = row['Link da Foto no Google Drive'] || row[Object.keys(row)[1]];
+
+                        if (name && url) {
+                            this.updateStatus(`Processando (${i + 1}/${data.length}): ${name}`);
+                            this.updateProgress(((i + 1) / data.length) * 100);
+                            await this.processImage(name, url);
+                        }
+                    }
+                    this.updateStatus('Processamento concluído!', false, true);
+                    this.resultsSection.classList.remove('hidden');
+                } catch (error) {
+                    this.updateStatus(`Erro: ${error.message}`, true);
+                } finally {
+                    this.isProcessing = false;
+                    this.processBtn.disabled = false;
+                }
+            },
+
+            getData() {
+                return new Promise((resolve, reject) => {
+                    if (this.fileInput.files.length > 0) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                            resolve(XLSX.utils.sheet_to_json(worksheet));
+                        };
+                        reader.readAsArrayBuffer(this.fileInput.files[0]);
+                    } else if (this.pasteDataEl.value.trim() !== '') {
+                        const lines = this.pasteDataEl.value.trim().split('\n');
+                        const data = lines.map(line => {
+                            const parts = line.split(/[,;\t]/);
+                            return {
+                                'Nome do Palestrante': parts[0] ? parts[0].trim() : '',
+                                'Link da Foto no Google Drive': parts[1] ? parts[1].trim() : ''
+                            };
+                        });
+                        resolve(data);
+                    } else {
+                        reject(new Error('Insira um arquivo ou texto.'));
+                    }
+                });
+            },
+
+            extractDriveId(url) {
+                const match = url.match(/[-\w]{25,}/);
+                return match ? match[0] : null;
+            },
+
+            async processImage(name, url) {
+                const fileId = this.extractDriveId(url);
+                if (!fileId) {
+                    this.addResultCard(name, null, 'Link do Drive inválido');
+                    return;
+                }
+
+                // URL direta de visualização do Google Drive (evita bloqueios de download automático)
+                const directUrl = `https://lh3.googleusercontent.com/d/${fileId}=s1000`;
+
+                try {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = () => reject(new Error('Acesso negado. Verifique as permissões do arquivo no Drive.'));
+                        img.src = directUrl;
+                    });
+
+                    const canvas = document.createElement('canvas');
+                    const detection = await faceapi.detectSingleFace(img);
+
+                    let cropBox = detection ? this.getFaceCropBox(img, detection.box) : this.getCenterCropBox(img);
+                    
+                    canvas.width = cropBox.size;
+                    canvas.height = cropBox.size;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, cropBox.x, cropBox.y, cropBox.size, cropBox.size, 0, 0, cropBox.size, cropBox.size);
+
+                    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+                    const resultUrl = URL.createObjectURL(blob);
+
+                    this.processedImages.push({ name: this.sanitizeFilename(name) + '.jpg', blob });
+                    this.addResultCard(name, resultUrl, detection ? 'Rosto detectado' : 'Corte centralizado');
+
+                } catch (error) {
+                    this.addResultCard(name, null, error.message);
+                }
+            },
+
+            addResultCard(name, imageUrl, message) {
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3 rounded-lg shadow-md flex flex-col items-center text-center';
+
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'w-32 h-32 mb-2 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center';
+                
+                if (imageUrl) {
+                    imageContainer.innerHTML = `<img src="${imageUrl}" class="w-full h-full object-cover">`;
+                } else {
+                    imageContainer.innerHTML = `<span class="text-xs text-gray-400 p-2">Sem imagem</span>`;
+                }
+
+                card.appendChild(imageContainer);
+                card.innerHTML += `<p class="font-bold text-sm leading-tight">${name}</p>`;
+                card.innerHTML += `<p class="text-xs mt-1 ${imageUrl ? 'text-green-600' : 'text-red-600'}">${message}</p>`;
+
+                this.resultsGrid.appendChild(card);
+            },
+
+            getFaceCropBox(image, box) {
+                const centerX = box.x + box.width / 2;
+                const centerY = box.y + box.height / 2;
+                let size = Math.max(box.width, box.height) * 1.8;
+                size = Math.min(size, image.width, image.height);
+
+                let x = Math.max(0, Math.min(centerX - size / 2, image.width - size));
+                let y = Math.max(0, Math.min(centerY - size / 2, image.height - size));
+
+                return { x, y, size };
+            },
+
+            getCenterCropBox(image) {
+                const size = Math.min(image.width, image.height);
+                return { x: (image.width - size) / 2, y: (image.height - size) / 2, size };
+            },
+
+            async downloadAllAsZip() {
+                if (this.processedImages.length === 0) return;
+                const zip = new JSZip();
+                this.processedImages.forEach(img => zip.file(img.name, img.blob));
+                const content = await zip.generateAsync({ type: "blob" });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = "fotos_palestrantes.zip";
+                link.click();
+            },
+
+            updateStatus(msg, isError = false, isSuccess = false) {
+                this.statusText.textContent = msg;
+                this.statusText.className = `ml-4 text-lg font-medium ${isError ? 'text-red-600' : isSuccess ? 'text-green-600' : 'text-gray-700'}`;
+            },
+
+            updateProgress(pct) {
+                this.progressBar.style.width = `${pct}%`;
+            },
+
+            sanitizeFilename(name) {
+                return name.replace(/[^a-z0-9_-\s]/gi, '').replace(/\s+/g, '_').toLowerCase();
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>
